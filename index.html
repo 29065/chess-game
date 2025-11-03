@@ -19,98 +19,142 @@ button,input[type=range]{padding:6px 10px;border-radius:4px;font-size:14px;}
 #settings-tab label{display:block;margin-top:10px;font-size:14px;}
 #promotion-modal{position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;}
 #promotion-modal .choices{background:white;padding:20px;border-radius:6px;display:flex;gap:10px;}
-.theme-dark body{background:#222;color:#eee;}
-.theme-dark .white{background:#aaa;color:#222;} .theme-dark .black{background:#333;color:#eee;}
 </style>
 </head>
 <body>
+
 <div id="game-container">
-<div id="board-container">
-<div id="board"></div>
-<div id="controls">
-<button id="resetBtn">Reset</button>
-<button id="undoBtn">Undo</button>
-<button id="settingsBtn">Settings</button>
-<label>Difficulty: <span id="difficultyLabel">800</span></label>
-<input type="range" id="difficultySlider" min="800" max="2500" step="100" value="800">
-</div>
-</div>
-<div id="log-container">
-<div><h2>Engine Log</h2><div id="log"></div></div>
-<div><h2>Move History</h2><div id="history"></div></div>
-</div>
+  <div id="board-container">
+    <div id="board"></div>
+    <div id="controls">
+      <button id="resetBtn">Reset</button>
+      <button id="undoBtn">Undo</button>
+      <button id="settingsBtn">Settings</button>
+      <label>Difficulty: <span id="difficultyLabel">800</span></label>
+      <input type="range" id="difficultySlider" min="800" max="2500" step="100" value="800">
+    </div>
+  </div>
+  <div id="log-container">
+    <div>
+      <h2>Engine Log</h2>
+      <div id="log"></div>
+    </div>
+    <div>
+      <h2>Move History</h2>
+      <div id="history"></div>
+    </div>
+  </div>
 </div>
 
 <div id="settings-tab">
-<h3>Settings</h3>
-<label>Promotion Mode:
-<select id="promotionMode">
-<option value="popup">Pop-up</option>
-<option value="queen">Auto-Queen</option>
-</select>
-</label>
-<label>Theme:
-<select id="themeSelect">
-<option value="light">Light</option>
-<option value="dark">Dark</option>
-</select>
-</label>
-<label>Show Legal Moves:
-<input type="checkbox" id="showLegal" checked>
-</label>
+  <h3>Settings</h3>
+  <label>Promotion Mode:
+    <select id="promotionMode">
+      <option value="popup">Pop-up</option>
+      <option value="queen">Auto-Queen</option>
+    </select>
+  </label>
+  <label>Show Legal Moves:
+    <input type="checkbox" id="showLegal" checked>
+  </label>
 </div>
 
 <div id="promotion-modal">
-<div class="choices" id="promotionChoices"></div>
+  <div class="choices" id="promotionChoices"></div>
 </div>
 
 <script>
-function Stockfish(){ try{ return new Worker('stockfish.wasm.js'); }catch(e){ return { postMessage:()=>{}, onmessage:null }; } }
-const engine=Stockfish();
-engine.onmessage=function(e){ const msg=e.data||e; log(msg); if(msg.startsWith("bestmove")) makeMoveFromUCI(msg.split(" ")[1],false);}
-engine.postMessage("uci"); engine.postMessage("isready");
-
 const boardEl=document.getElementById("board");
-const output=document.getElementById("log");
+const logEl=document.getElementById("log");
 const historyEl=document.getElementById("history");
-function log(msg){ output.textContent+=msg+"\n"; output.scrollTop=output.scrollHeight;}
-function addHistory(move){ historyEl.textContent+=move+" "; historyEl.scrollTop=historyEl.scrollHeight;}
+const promotionModal=document.getElementById("promotion-modal");
+const promotionChoices=document.getElementById("promotionChoices");
 
-let board=[], turn='w', selected=null, legalMoves=[], moveHistory=[];
-let promotionMode='popup', showLegal=true, engineDepth=10;
+let board=[], turn='w', selected=null, moveHistory=[];
+let promotionMode='popup', showLegal=true;
 
 const unicodePieces={r:'♜',n:'♞',b:'♝',q:'♛',k:'♚',p:'♟',R:'♖',N:'♘',B:'♗',Q:'♕',K:'♔',P:'♙'};
-const directions={
-p:[[1,0]],P:[[-1,0]],
-n:[[2,1],[1,2],[-1,2],[-2,1],[-2,-1],[-1,-2],[1,-2],[2,-1]],
-b:[[1,1],[1,-1],[-1,1],[-1,-1]],
-r:[[1,0],[0,1],[-1,0],[0,-1]],
-q:[[1,1],[1,-1],[-1,1],[-1,-1],[1,0],[0,1],[-1,0],[0,-1]],
-k:[[1,1],[1,-1],[-1,1],[-1,-1],[1,0],[0,1],[-1,0],[0,-1]]
-};
 
-function initBoard(){board=[['r','n','b','q','k','b','n','r'],['p','p','p','p','p','p','p','p'],['','','','','','','',''],['','','','','','','',''],['','','','','','','',''],['','','','','','','',''],['P','P','P','P','P','P','P','P'],['R','N','B','Q','K','B','N','R']];turn='w';selected=null;legalMoves=[];moveHistory=[];renderBoard();historyEl.textContent='';}
+// Initialize board
+function initBoard(){
+  board=[
+    ['r','n','b','q','k','b','n','r'],
+    ['p','p','p','p','p','p','p','p'],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['','','','','','','',''],
+    ['P','P','P','P','P','P','P','P'],
+    ['R','N','B','Q','K','B','N','R']
+  ];
+  turn='w';
+  selected=null;
+  moveHistory=[];
+  renderBoard();
+  historyEl.textContent='';
+}
 initBoard();
 
-function renderBoard(){boardEl.innerHTML='';for(let r=0;r<8;r++){for(let c=0;c<8;c++){const sq=document.createElement('div');sq.className='square '+((r+c)%2===0?'white':'black');sq.dataset.row=r;sq.dataset.col=c;if(selected && showLegal && legalMoves.some(m=>m[0]===r && m[1]===c)) sq.classList.add('highlight');sq.textContent=unicodePieces[board[r][c]]||'';sq.addEventListener('click',onSquareClick);boardEl.appendChild(sq);}}}
-
-function onSquareClick(e){const r=parseInt(e.currentTarget.dataset.row);const c=parseInt(e.currentTarget.dataset.col);const piece=board[r][c];if(selected){if(legalMoves.some(m=>m[0]===r&&m[1]===c)){moveWithPromotion(selected[0],selected[1],r,c,true);selected=null;legalMoves=[];renderBoard();if(turn==='b') requestEngineMove();}else{selected=null;legalMoves=[];renderBoard();}}else if(piece && ((turn==='w'&&piece===piece.toUpperCase())||(turn==='b'&&piece===piece.toLowerCase()))){selected=[r,c];legalMoves=getLegalMoves(r,c);renderBoard();}}
-
-function getLegalMoves(r,c){
-  const piece=board[r][c];if(!piece) return[];
-  let moves=[];
-  const isWhite=piece===piece.toUpperCase();
-  const type=piece.toLowerCase();
-  if(type==='p'){let dir=isWhite?-1:1;let startRow=isWhite?6:1;
-    if(!board[r+dir][c]) moves.push([r+dir,c]);
-    if(r===startRow && !board[r+dir][c] && !board[r+dir*2][c]) moves.push([r+dir*2,c]);
-    for(let dc of [-1,1]) if(board[r+dir][c+dc] && ((isWhite && board[r+dir][c+dc]==board[r+dir][c+dc].toLowerCase())||(!isWhite && board[r+dir][c+dc]==board[r+dir][c+dc].toUpperCase()))) moves.push([r+dir,c+dc]);
-  }else{for(let [dr,dc] of directions[type]){for(let i=1;i<=8;i++){let nr=r+dr*i,nc=c+dc*i;if(nr<0||nr>7||nc<0||nc>7) break;let target=board[nr][nc];if(!target)moves.push([nr,nc]);else{if((isWhite && target===target.toLowerCase())||(!isWhite && target===target.toUpperCase())) moves.push([nr,nc]);break;} if('kn'.includes(type)) break;}}}
-  return moves;
+function renderBoard(){
+  boardEl.innerHTML='';
+  for(let r=0;r<8;r++){
+    for(let c=0;c<8;c++){
+      const sq=document.createElement('div');
+      sq.className='square '+((r+c)%2===0?'white':'black');
+      sq.dataset.row=r;
+      sq.dataset.col=c;
+      sq.textContent=unicodePieces[board[r][c]]||'';
+      sq.addEventListener('click',onSquareClick);
+      boardEl.appendChild(sq);
+    }
+  }
 }
 
-function moveWithPromotion(r1,c1,r2,c2,player=true){
-  let piece=board[r1][c1];
-  let promote=false;
-  if(piece.toLowerCase()==='p' && (r2===0 || r2===7)) promote=true;
-  if(promote && promotionMode==='popup'){showPromotionModal(r2
+function onSquareClick(e){
+  const r=parseInt(e.currentTarget.dataset.row);
+  const c=parseInt(e.currentTarget.dataset.col);
+  const piece=board[r][c];
+  if(selected){
+    makeMove(selected[0],selected[1],r,c);
+    selected=null;
+    renderBoard();
+  }else if(piece && ((turn==='w' && piece===piece.toUpperCase())||(turn==='b' && piece===piece.toLowerCase()))){
+    selected=[r,c];
+  }
+}
+
+function makeMove(r1,c1,r2,c2){
+  const piece=board[r1][c1];
+  const target=board[r2][c2];
+  board[r2][c2]=piece;
+  board[r1][c1]='';
+  moveHistory.push({r1,c1,r2,c2,piece,target});
+  turn=(turn==='w')?'b':'w';
+  addHistory(`${piece}${r1}${c1}->${r2}${c2}`);
+}
+
+// Undo
+document.getElementById("undoBtn").addEventListener("click",()=>{
+  if(!moveHistory.length) return;
+  const last=moveHistory.pop();
+  board[last.r1][last.c1]=last.piece;
+  board[last.r2][last.c2]=last.target;
+  turn=(turn==='w')?'b':'w';
+  renderBoard();
+  historyEl.textContent=moveHistory.map(m=>`${m.piece}${m.r1}${m.c1}->${m.r2}${m.c2}`).join(' ');
+});
+
+// Reset
+document.getElementById("resetBtn").addEventListener("click", initBoard);
+
+// Settings
+const settingsTab=document.getElementById("settings-tab");
+document.getElementById("settingsBtn").addEventListener("click",()=>settingsTab.style.display=(settingsTab.style.display==='none'?'block':'none'));
+document.getElementById("promotionMode").addEventListener("change",(e)=>promotionMode=e.target.value);
+document.getElementById("showLegal").addEventListener("change",(e)=>showLegal=e.target.checked);
+
+function addHistory(move){ historyEl.textContent+=move+' '; historyEl.scrollTop=historyEl.scrollHeight;}
+
+</script>
+</body>
+</html>
